@@ -1,0 +1,98 @@
+---
+title: "HW4"
+output: html_notebook
+---
+
+## Homework
+
+1. Compare the most important features from at least 2 different classes of feature selection methods covered in this tutorial with any reasonable machine learning dataset from mlbench. Do these feature selection methods provide similar results? 
+
+2. Attempt a feature selection method not covered in this tutorial (backward elimination, forward propogation, etc.)
+
+```{r}
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(mlbench)
+library(glmnet)
+```
+
+```{r}
+data("PimaIndiansDiabetes")
+head(PimaIndiansDiabetes)
+dim(PimaIndiansDiabetes)
+summary(PimaIndiansDiabetes$diabetes)
+```
+
+```{r}
+PimaIndians_num = transform(PimaIndiansDiabetes, pregnant = as.numeric(pregnant), 
+                         glucose = as.numeric(glucose),
+                         pressure = as.numeric(pressure),
+                         triceps = as.numeric(triceps), 
+                         insulin = as.numeric(insulin),
+                         mass = as.numeric(mass),
+                         pedigree = as.numeric(pedigree), 
+                         age = as.numeric(age))
+
+PimaIndians_num[is.na(PimaIndians_num)] = 0
+
+#calculate correlation matrix using pearson correlation (others include spearman and kendall)
+correlation_matrix = cor(PimaIndians_num[,1:8])
+
+#visualize correlation matrix
+library(corrplot)
+corrplot(correlation_matrix, order = "hclust")
+
+#apply correlation filter of 0.7
+highly_correlated <- colnames(PimaIndians_num[, -1])[findCorrelation(correlation_matrix, cutoff = 0.7, verbose = TRUE)]
+
+#which features are highly correlated and can be removed
+highly_correlated
+```
+
+```{r}
+#define the control 
+control = rfeControl(functions = caretFuncs, number = 2)
+
+# run the RFE algorithm
+results = rfe(PimaIndians_num[,1:8], PimaIndians_num[,9], sizes = c(2,5,8), rfeControl = control, method = "svmRadial")
+
+results
+results$variables
+
+plot(results, type=c("g", "o"))
+
+predictors(results)
+```
+
+```{r}
+set.seed(24)
+train_size <- floor(0.75 * nrow(PimaIndiansDiabetes))
+train_pos <- sample(seq_len(nrow(PimaIndiansDiabetes)), size = train_size)
+
+
+train_classification <- PimaIndians_num[train_pos, ]
+test_classification <- PimaIndians_num[-train_pos, ]
+
+#fit a model
+rfmodel = randomForest(diabetes ~ pregnant + glucose + pressure + age + mass + pedigree + triceps + insulin, data=train_classification,  importance = TRUE, oob.times = 15, confusion = TRUE)
+
+#rank features based on importance 
+importance(rfmodel)
+```
+
+Both methods provide very similar results, showing that the most important features are glucose, mass, and age.
+
+#Feature Selection using Boruta
+
+```{r}
+library(Boruta)
+
+boruta_output <- Boruta(diabetes ~ ., data=na.omit(PimaIndians_num), doTrace=2)
+
+significant <- names(boruta_output$finalDecision[boruta_output$finalDecision %in% c("Confirmed", "Tentative")])  # collect Confirmed and Tentative variables
+print(significant)
+
+plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")
+```
+Using the boruta mehtod, the same top variables are displayed as seen with the other feature selection methods
